@@ -56,7 +56,7 @@ pub struct StaticSourceFileResolver {
 }
 
 impl StaticSourceFileResolver {
-    pub(crate) fn new<IS, S>(sources: IS) -> Self
+    pub fn new<IS, S>(sources: IS) -> Self
     where
         IS: IntoIterator<Item = S>,
         S: Into<SourceNewType>,
@@ -91,7 +91,7 @@ pub struct StaticFileResolver {
 }
 
 impl StaticFileResolver {
-    pub(crate) fn new<IB, F, B>(binaries: IB) -> Self
+    pub fn new<IB, F, B>(binaries: IB) -> Self
     where
         IB: IntoIterator<Item = (F, B)>,
         F: Into<FileIdNewType>,
