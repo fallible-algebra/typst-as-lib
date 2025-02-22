@@ -1,7 +1,5 @@
 use std::fs;
-use typst::foundations::{Bytes, Smart};
-use typst::text::Font;
-use typst_as_lib::TypstTemplate;
+use typst_as_lib::TypstEngine;
 
 static TEMPLATE_FILE: &str = include_str!("./templates/resolve_static.typ");
 
@@ -14,18 +12,21 @@ static FONT: &[u8] = include_bytes!("./fonts/texgyrecursor-regular.otf");
 static OUTPUT: &str = "./examples/output.pdf";
 
 fn main() {
-    let font = Font::new(Bytes::from(FONT), 0).expect("Could not parse font!");
-
     // Read in fonts and the main source file.
     // We can use this template more than once, if needed (Possibly
     // with different input each time).
-    let template = TypstTemplate::new(vec![font], TEMPLATE_FILE)
-        .with_static_source_file_resolver([("function.typ", OTHER_TEMPLATE_FILE)])
-        .with_static_file_resolver([("./images/typst.png", IMAGE)]);
+    let template = TypstEngine::builder()
+        .fonts([FONT])
+        .with_static_source_file_resolver([
+            ("main.typ", TEMPLATE_FILE),
+            ("function.typ", OTHER_TEMPLATE_FILE),
+        ])
+        .with_static_file_resolver([("./images/typst.png", IMAGE)])
+        .build();
 
     // Run it
     let doc = template
-        .compile()
+        .compile("main.typ")
         .output
         .expect("typst::compile() returned an error!");
 

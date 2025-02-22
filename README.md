@@ -15,13 +15,13 @@ static OUTPUT: &str = "./examples/output.pdf";
 static IMAGE: &[u8] = include_bytes!("./templates/images/typst.png");
 
 fn main() {
-    let font = Font::new(Bytes::from(FONT), 0)
-        .expect("Could not parse font!");
-
     // Read in fonts and the main source file.
     // We can use this template more than once, if needed (Possibly
     // with different input each time).
-    let template = TypstTemplate::new(vec![font], TEMPLATE_FILE);
+    let template = TypstEngine::builder()
+        .main_file(TEMPLATE_FILE)
+        .fonts([FONT])
+        .build();
 
     // Run it
     let doc = template
@@ -70,71 +70,100 @@ cargo r --example=small_example
 ```
 
 ## Resolving files
+
+### main file
+The `TypstEngine::main_file` call is not needed. You can omit it, although you would have to specify it when calling `TypstEngine::compile`.
+
 ### Binaries
-Use `TypstTemplate::with_static_file_resolver` and add the binaries as key value pairs (`(file_name, &[u8])`).
+
+Use `TypstEngineBuilder::with_static_file_resolver` and add the binaries as key value pairs (`(file_name, &[u8])`).
 
 ### Sources
-Use `TypstTemplate::with_static_source_file_resolver` and add the sources as key value pairs (`(file_name, String)`).
 
-
+Use `TypstEngineBuilder::with_static_source_file_resolver` and add the sources as key value pairs (`(file_name, String)`).
 
 ### Local files
-Resolving local files can be enabled with `TypstTemplate::with_file_system_resolver`. The root should be the template folder. Files cannot be resolved, if they are outside of root.
+
+Resolving local files can be enabled with `TypstEngineBuilder::with_file_system_resolver`. The root should be the template folder. Files cannot be resolved, if they are outside of root.
 
 Can be enabled like this:
+
 ```rust
-let template = TypstTemplate::new(vec![font], TEMPLATE_FILE)
-    .with_file_system_resolver("./examples/templates");
+let template = TypstEngine::builder()
+    .main_file(TEMPLATE_FILE)
+    .fonts([font])
+    .with_file_system_resolver("./examples/templates")
+    .build();
 ```
 
 If you want to use another local package install path, use:
+
 ```rust
-let template = TypstTemplate::new(vec![font], TEMPLATE_FILE)
+let template = TypstEngine::builder()
+    .main_file(TEMPLATE_FILE)
+    .fonts([font])
     .add_file_resolver(
         FileSystemResolver::new("./examples/templates")
             .with_local_package_root("local/packages")
-            .cached()
-    );
+            .into_cached()
+    )
+    .build();
 ```
 
 ### Remote Packages
+
 The `package` feature needs to be enabled.
 
 Can be enabled like this:
+
 ```rust
-let template = TypstTemplate::new(vec![font], TEMPLATE_FILE)
-    .with_package_file_resolver(None);
+let template = TypstEngine::builder()
+    .main_file(TEMPLATE_FILE)
+    .fonts([font])
+    .with_package_file_resolver(None)
+    .build();
 ```
 
-This uses the file system as a cache. 
+This uses the file system as a cache.
 
 If you want to use another cache root path, use:
+
 ```rust
-let template = TypstTemplate::new(vec![font], TEMPLATE_FILE)
+let template = TypstEngine::builder()
+    .main_file(TEMPLATE_FILE)
+    .fonts([font])
     .add_file_resolver(PackageResolverBuilder::new()
         .set_cache(
             FileSystemCache(PathBuf::from("cache/root"))
         )
-        .build().cached()
-    );
+        .build().into_cached()
+    )
+    .build();
 ```
+Note that the Cache Wrapper created with the call to `into_cached(self)` creates a in memory cache for Binary files and `Source` files. 
 
-If you want to instead use the memory as cache, use:
+If you want to instead use the memory as (binary) cache, use:
+
 ```rust
-let template = TypstTemplate::new(vec![font], TEMPLATE_FILE)
+let template = TypstEngine::build()
+    .main_file(TEMPLATE_FILE)
+    .add_fonts([font])
     .add_file_resolver(PackageResolverBuilder::new()
         .set_cache(
             InMemoryCache::new()
         )
-        .build().cached()
-    );
+        .build().into_cached()
+    )
+    .build();
 ```
+
+Note that the Cache Wrapper created with the call to `into_cached(self)` only caches the `Source` files (each single file lazily) here and the `InMemoryCache` caches all binaries (eagerly after the first download of the whole package, which is triggered (lazily), when requested in a typst script).
 
 ### Examples
 
 #### Static binaries and sources
 
-See [example](https://github.com/Relacibo/typst-as-lib/blob/main/examples/resolve_static.rs) which uses the static file resolvers.
+See example [resolve_static](https://github.com/Relacibo/typst-as-lib/blob/main/examples/resolve_static.rs) which uses the static file resolvers.
 
 ```bash
 cargo r --example=resolve_static
@@ -142,7 +171,7 @@ cargo r --example=resolve_static
 
 #### Local files and remote packages
 
-See [example](https://github.com/Relacibo/typst-as-lib/blob/main/examples/resolve_packages.rs) which uses the file and the package resolver. 
+See example [resolve_packages](https://github.com/Relacibo/typst-as-lib/blob/main/examples/resolve_packages.rs) which uses the file and the package resolver.
 
 ```bash
 cargo r --example=resolve_files --features=package
@@ -150,25 +179,22 @@ cargo r --example=resolve_files --features=package
 
 ### Custom file resolver
 
-You can also write your own file resolver. You need to implement the Trait `FileResolver` and  pass it to the `TypstTemplate::add_file_resolver` function.
-
-## TypstTemplateCollection
-
-If you want to compile multiple typst (main) source files you might want to use the `TypstTemplateCollection`, which allows you to specify the source file, when calling `TypstTemplateCollection::compile`, instead of passing it to new. The source file has to be added with `TypstTemplateCollection::add_static_file_resolver` first.
-`TypstTemplate` is just a wrapper around `TypstTemplateCollection`, that also saves a `FileId` for the main source file.
+You can also write your own file resolver. You need to implement the Trait `FileResolver` and pass it to the `TypstEngineBuilder::add_file_resolver` function. There you can also have some additional config options for the `PackageFileResolver`, `FileSystemResolver`, and so on.
 
 ## Loading fonts
 
-Loading fonts is not in the scope of this library (yet?). If you are interested in that, write an issue.
+You can simply add fonts to the `TypstEngine` with `TypstEngineBuilder::fonts`. You can also activate the feature `typst-kit-fonts` that adds `search_fonts_with` to `TypstEngineBuilder`, which uses the `typst-kit` library to resolve system fonts. You also might additionally use the feature `typst-kit-embed-fonts`, that activates the feature `embed-fonts` for `typst-kit`. This causes `typst-kit` to also embed fonts from [typst-assets](https://github.com/typst/typst-assets) at compile time.
 
-- [This](https://github.com/typst/typst/blob/a2c980715958bc3fd71e1f0a5975fea3f5b63b85/crates/typst-cli/src/fonts.rs#L69) is how the typst-cli loads system fonts.
-- Here is an [example](https://github.com/tfachmann/typst-as-library/blob/dd9a93379b486dc0a2916b956360db84b496822e/src/lib.rs#L216) of loading fonts from a folder.
+See example [font_searcher](https://github.com/Relacibo/typst-as-lib/blob/main/examples/font_searcher.rs).
 
 ## TODO
-- allow usage of reqwest instead of ureq with a feature flag
-- fonts
 
-## Some links, idk
+- allow usage of reqwest instead of ureq with a feature flag
+
+## Previous work
 
 - [https://github.com/tfachmann/typst-as-library](https://github.com/tfachmann/typst-as-library)
+
+## Maybe useful
+
 - [https://github.com/KillTheMule/derive_typst_intoval](https://github.com/KillTheMule/derive_typst_intoval)

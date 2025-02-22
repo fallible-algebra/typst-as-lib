@@ -12,8 +12,8 @@ use typst::{
 
 use crate::{
     cached_file_resolver::{CachedFileResolver, IntoCachedFileResolver},
+    conversions::{IntoBytes, IntoFileId, IntoSource},
     util::{bytes_to_source, not_found},
-    FileIdNewType, SourceNewType,
 };
 
 // https://github.com/typst/typst/blob/16736feb13eec87eb9ca114deaeb4f7eeb7409d2/crates/typst-kit/src/package.rs#L18
@@ -59,12 +59,12 @@ impl StaticSourceFileResolver {
     pub fn new<IS, S>(sources: IS) -> Self
     where
         IS: IntoIterator<Item = S>,
-        S: Into<SourceNewType>,
+        S: IntoSource,
     {
         let sources = sources
             .into_iter()
             .map(|s| {
-                let SourceNewType(s) = s.into();
+                let s = s.into_source();
                 (s.id(), s)
             })
             .collect();
@@ -80,7 +80,7 @@ impl FileResolver for StaticSourceFileResolver {
     fn resolve_source(&self, id: FileId) -> FileResult<Cow<Source>> {
         self.sources
             .get(&id)
-            .map(|s| Cow::Borrowed(s))
+            .map(Cow::Borrowed)
             .ok_or_else(|| not_found(id))
     }
 }
@@ -94,15 +94,12 @@ impl StaticFileResolver {
     pub fn new<IB, F, B>(binaries: IB) -> Self
     where
         IB: IntoIterator<Item = (F, B)>,
-        F: Into<FileIdNewType>,
-        B: Into<Bytes>,
+        F: IntoFileId,
+        B: IntoBytes,
     {
         let binaries = binaries
             .into_iter()
-            .map(|(id, b)| {
-                let FileIdNewType(id) = id.into();
-                (id, b.into())
-            })
+            .map(|(id, b)| (id.into_file_id(), b.into_bytes()))
             .collect();
         Self { binaries }
     }
@@ -112,7 +109,7 @@ impl FileResolver for StaticFileResolver {
     fn resolve_binary(&self, id: FileId) -> FileResult<Cow<Bytes>> {
         self.binaries
             .get(&id)
-            .map(|b| Cow::Borrowed(b))
+            .map(Cow::Borrowed)
             .ok_or_else(|| not_found(id))
     }
 
@@ -174,7 +171,7 @@ impl FileSystemResolver {
             .resolve(&dir)
             .ok_or_else(|| FileError::NotFound(dir.to_path_buf()))?;
         let content = std::fs::read(&path).map_err(|error| FileError::from_io(error, &path))?;
-        Ok(content.into())
+        Ok(content)
     }
 }
 
@@ -189,7 +186,7 @@ impl IntoCachedFileResolver for FileSystemResolver {
 impl FileResolver for FileSystemResolver {
     fn resolve_binary(&self, id: FileId) -> FileResult<Cow<Bytes>> {
         let b = self.resolve_bytes(id)?;
-        Ok(Cow::Owned(b.into()))
+        Ok(Cow::Owned(Bytes::new(b)))
     }
 
     fn resolve_source(&self, id: FileId) -> FileResult<Cow<Source>> {
